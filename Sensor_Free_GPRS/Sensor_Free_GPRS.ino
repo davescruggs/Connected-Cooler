@@ -1,9 +1,13 @@
+
+
 #include <SoftwareSerial.h>
 #include <String.h>
 // #include <CapacitiveSensor.h> //Get from 
                            //http://playground.arduino.cc/Main/CapacitiveSensor
 
-/* Sensor Sentinel 
+/* 
+   Started with code from: 
+   Sensor Sentinel 
    by Adam Wolf, Wayne and Layne
    MAKE Weekend Project
    
@@ -57,41 +61,27 @@
 */
 
 /* Settings */
-const char SMS_NUMBER[] = "+15558675309"; //remember to include + and country 
+const char SMS_NUMBER[] = "+14048490015"; //remember to include + and country 
                                           //code! 
-const unsigned long MIN_MS_BETWEEN_SMS = 60000;
-const boolean SMS_ENABLED = false;
+const unsigned long MIN_MS_BETWEEN_SMS = 90000;
+const boolean SMS_ENABLED = true;
 const boolean SEND_SMS_AT_STARTUP = true;
-const boolean CAP_SENSOR_ENABLED = true; 
 
-const long CAP_LOW_THRESHOLD = 8000; //if the capacitive sensor is lower 
-                                     //than this, it will not count as a 
-                                     //press.
-const long CAP_HIGH_THRESHOLD = 12000; //if the capacitive sensor is higher
-                                       //than this, it will count as a 
-                                       //press.  Put a gap between these 
-                                       //numbers to prevent it repeatedly
-                                       //triggering when it is close to the 
-                                       //limit.
+#define GPRS_APN       "jaspermo.apn";
+
+// URL, path & port (for example: arduino.cc)
+char server[] = "arduino.cc";
+char path[] = "/asciilogo.txt";
+int port = 80; // port 80 is the default for HTTP
 
 /* Pin Settings */
-#define LIGHT_SENSOR A0
-#define PIR_POWER 3
-#define PIR_SENSOR 2
-#define PIR_GROUND 4
-#define CONTACT_SENSOR 10
-#define CAPACITIVE_SEND 12
-#define CAPACITIVE_RECEIVE 11
+//tbd, when sensors are added. 
 
 /* Global Variables */
 String message = String(""); //make a new string and set it to empty
 unsigned long last_sms_time = 0;
-boolean pir_reading = LOW;
-boolean contact_reading;
-boolean capacitive_reading = false;
-long raw_capacitive_reading;
-CapacitiveSensor cap_sensor = CapacitiveSensor(CAPACITIVE_RECEIVE, CAPACITIVE_SEND);
 
+// SeeedStudio GPRS Shield for serial setup. 
 SoftwareSerial cellularSerial(7, 8);
 
 void setup()
@@ -104,18 +94,7 @@ void setup()
   Serial.println(F("Hello world.")); //prints to the computer via Serial 
                                      //Monitor (when plugged in via USB)
   
-  pinMode(LIGHT_SENSOR, INPUT_PULLUP);
-  pinMode(PIR_GROUND, OUTPUT);
-  pinMode(PIR_POWER, OUTPUT);
-  pinMode(PIR_SENSOR, INPUT);
-  digitalWrite(PIR_GROUND, LOW);
-  digitalWrite(PIR_POWER, HIGH);
-  
-  pinMode(CONTACT_SENSOR, INPUT_PULLUP);
-  contact_reading = digitalRead(CONTACT_SENSOR);
-  
-  //The PIR needs about 8 seconds to stabilize, so we start powering it
-  //before we start powering the cell module.
+  // Set pin modes and sensor config here when there are sensors.
   
   cellularSerial.begin(19200);  // the default baud rate of the 
                                 // cellular module
@@ -124,17 +103,6 @@ void setup()
   
   enableNetworkTime(); //Ask the module to get the time from the network.
 
-  if (CAP_SENSOR_ENABLED)
-  {  
-    raw_capacitive_reading = cap_sensor.capacitiveSensor(30);
-    if (raw_capacitive_reading < CAP_LOW_THRESHOLD)
-    {
-      capacitive_reading = false;
-    } else if (raw_capacitive_reading > CAP_HIGH_THRESHOLD)
-    {
-      capacitive_reading = true;
-    }
-  }
   
   //Make sure we've waited 10 seconds since bootup, 
   //so the PIR and network time is ready.
@@ -157,56 +125,13 @@ void loop()
   //This function runs over and over after setup().
   drainSoftwareSerial(true);
   
-  if (digitalRead(PIR_SENSOR) != pir_reading)
-  {
-    pir_reading = !pir_reading;
-    if (pir_reading)
-    {
-      Serial.println(F("PIR just activated."));
-      message = String("PIR activated:");
-      sendTextMessage();
-    } else
-    {
-      Serial.println(F("PIR deactivated."));
-    }
-  }
+  Serial.println(F("Unit Activated."));
+  message = String("PIR activated:");
+  sendTextMessage();
   
-  if (digitalRead(CONTACT_SENSOR) != contact_reading)
-  {
-    contact_reading = !contact_reading;
-    if (!contact_reading)
-    {
-      Serial.println(F("Contact switch just pressed."));
-      message = String("Contact pressed:");
-      sendTextMessage();
-    } else
-    {
-      Serial.println(F("Contact switch just released."));
-      message = String("Contact released:");
-      sendTextMessage();    
-    }
-  }
+  // read sensors here. do "if (digitalRead(<sensor>) != ...)"
   
-  if (CAP_SENSOR_ENABLED)
-  {
-    raw_capacitive_reading = cap_sensor.capacitiveSensor(30);
-    Serial.print("Raw capacitive reading: ");
-    Serial.println(raw_capacitive_reading);
-    
-    if (capacitive_reading && raw_capacitive_reading < CAP_LOW_THRESHOLD)
-    {
-      capacitive_reading = !capacitive_reading;
-      Serial.println("Cap sensor deactivated.");
-      message = String("Cap sensor deactivated.");
-      sendTextMessage();
-    } else if (!capacitive_reading && raw_capacitive_reading > CAP_HIGH_THRESHOLD)
-    {
-      capacitive_reading = !capacitive_reading;
-      Serial.println(F("Cap sensor activated."));
-      message = String("Cap sensor activated.");
-      sendTextMessage();
-    }
-  }
+  
     
   delay(100);
 }
@@ -383,26 +308,24 @@ void annotateMessage()
 {
   //This function appends some sensor readings to the current text.
   
-  message += " Light: ";
-  message += analogRead(LIGHT_SENSOR);
+  message += " Data from sensors would go here ";
   
-  message += " Contact: ";
-  if (digitalRead(CONTACT_SENSOR))
-  {
-    message += "released";
-  } else
-  {
-    message += "pressed";
-  }
-  
-  if (CAP_SENSOR_ENABLED)
-  {
-    message += " Cap: ";
-    message += cap_sensor.capacitiveSensor(30);
-  }
   
   message += " (sent at ";
   getTime();
   message += ")";
 }
 
+// Jasper network bootstrap functions
+void scanForNetwork(){
+  // Automatic network selection
+  cellularSerial.print(F("AT+COPS=0\r"));
+}
+
+void enableGPRSDebugging(){
+  cellularSerial.print(F("AT+CMEE=1\r"));
+}
+
+void gsmRegistration(){
+   
+}
